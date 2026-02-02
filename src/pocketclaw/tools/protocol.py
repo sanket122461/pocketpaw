@@ -13,6 +13,7 @@ class ToolDefinition:
     name: str
     description: str
     parameters: dict[str, Any]  # JSON Schema
+    trust_level: str = "standard"  # standard, high, critical
 
     def to_openai_schema(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format."""
@@ -76,6 +77,11 @@ class BaseTool(ABC):
         ...
 
     @property
+    def trust_level(self) -> str:
+        """Required trust level to use this tool."""
+        return "standard"
+
+    @property
     def parameters(self) -> dict[str, Any]:
         """Parameter schema. Override in subclass."""
         return {"type": "object", "properties": {}, "required": []}
@@ -87,6 +93,7 @@ class BaseTool(ABC):
             name=self.name,
             description=self.description,
             parameters=self.parameters,
+            trust_level=self.trust_level,
         )
 
     @abstractmethod

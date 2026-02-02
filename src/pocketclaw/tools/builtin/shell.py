@@ -9,6 +9,7 @@ from typing import Any
 
 from pocketclaw.tools.protocol import BaseTool
 from pocketclaw.config import get_settings
+from pocketclaw.security import get_guardian
 
 
 class ShellTool(BaseTool):
@@ -40,6 +41,11 @@ class ShellTool(BaseTool):
         return "Execute a shell command and return the output."
 
     @property
+    def trust_level(self) -> str:
+        return "critical"
+
+
+    @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
@@ -58,6 +64,11 @@ class ShellTool(BaseTool):
         for pattern in self.DANGEROUS_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
                 return self._error(f"Dangerous command blocked: {command}")
+
+        # Check with Guardian Agent
+        is_safe, reason = await get_guardian().check_command(command)
+        if not is_safe:
+            return self._error(f"Command blocked by Guardian: {reason}")
 
         try:
             # Run in thread pool to not block
