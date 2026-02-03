@@ -1,8 +1,13 @@
-"""Web server for QR code pairing flow."""
+"""Web server for QR code pairing flow.
+
+Changes:
+  - 2026-02-03: Optimised deep link flow. Now fetches bot username and listens for /start <secret>.
+"""
 
 import asyncio
 import secrets
 from typing import Optional
+import logging
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse
@@ -12,13 +17,19 @@ import qrcode.image.svg
 from io import BytesIO
 import base64
 
+# Telegram imports for pairing bot
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+
 from pocketclaw.config import Settings
 
+logger = logging.getLogger(__name__)
 
 # Global state for pairing
 _pairing_complete = asyncio.Event()
 _session_secret: Optional[str] = None
 _settings: Optional[Settings] = None
+_temp_bot_app: Optional[Application] = None
 
 
 def generate_qr_svg(deep_link: str) -> str:
@@ -33,6 +44,52 @@ def generate_qr_svg(deep_link: str) -> str:
     img.save(buffer, format="PNG")
     img_base64 = base64.b64encode(buffer.getvalue()).decode()
     return f"data:image/png;base64,{img_base64}"
+
+
+async def _handle_pairing_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start <secret> during pairing."""
+    global _settings, _pairing_complete
+    
+    if not update.message or not update.effective_user:
+        return
+        
+    text = update.message.text
+    if not text:
+        return
+
+    # Check payload
+    # Format: /start <secret>
+    # Note: Telegram sends "/start" or "/start <payload>"
+    parts = text.split()
+    
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "⏳ Waiting for pairing... Please scan the QR code to start."
+        )
+        return
+        
+    secret = parts[1]
+    
+    if secret != _session_secret:
+        await update.message.reply_text("❌ Invalid session token. Please refresh the setup page.")
+        return
+        
+    # Success!
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    
+    if _settings:
+        _settings.allowed_user_id = user_id
+        _settings.save()
+        
+    logger.info(f"✅ Paired with user: {username} ({user_id})")
+    
+    await update.message.reply_text(
+        "🎉 **Connected!**\n\nPocketPaw is now paired with this device.\nYou can close the browser window now.",
+        parse_mode="Markdown"
+    )
+    
+    _pairing_complete.set()
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -136,7 +193,9 @@ def create_app(settings: Settings) -> FastAPI:
             padding: 16px;
             border-radius: 12px;
             margin-top: 16px;
+            animation: fadeIn 0.5s ease-out;
         }}
+        @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         .api-keys {{
             margin-top: 16px;
             text-align: left;
@@ -204,30 +263,49 @@ def create_app(settings: Settings) -> FastAPI:
     <script>
         document.getElementById('setup-form').addEventListener('submit', async (e) => {{
             e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerText;
+            btn.innerText = "Connecting...";
+            btn.disabled = true;
+            
             const formData = new FormData(e.target);
-            const response = await fetch('/setup', {{
-                method: 'POST',
-                body: formData
-            }});
-            const data = await response.json();
-            if (data.qr_url) {{
-                document.getElementById('qr-image').src = data.qr_url;
-                document.getElementById('qr-section').classList.add('active');
-                e.target.style.display = 'none';
-                pollStatus();
+            try {{
+                const response = await fetch('/setup', {{
+                    method: 'POST',
+                    body: formData
+                }});
+                const data = await response.json();
+                if (data.error) {{
+                    alert(data.error);
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                    return;
+                }}
+                if (data.qr_url) {{
+                    document.getElementById('qr-image').src = data.qr_url;
+                    document.getElementById('qr-section').classList.add('active');
+                    e.target.style.display = 'none';
+                    pollStatus();
+                }}
+            }} catch (err) {{
+                alert("Failed to connect. Please check your internet.");
+                btn.innerText = originalText;
+                btn.disabled = false;
             }}
         }});
         
         async function pollStatus() {{
             while (true) {{
-                const response = await fetch('/status');
-                const data = await response.json();
-                if (data.paired) {{
-                    document.getElementById('qr-section').style.display = 'none';
-                    document.getElementById('success-section').style.display = 'block';
-                    setTimeout(() => window.close(), 3000);
-                    break;
-                }}
+                try {{
+                    const response = await fetch('/status');
+                    const data = await response.json();
+                    if (data.paired) {{
+                        document.getElementById('qr-section').style.display = 'none';
+                        document.getElementById('success-section').style.display = 'block';
+                        setTimeout(() => window.close(), 3000);
+                        break;
+                    }}
+                }} catch (e) {{ console.error(e); }}
                 await new Promise(r => setTimeout(r, 1000));
             }}
         }}
@@ -243,7 +321,7 @@ def create_app(settings: Settings) -> FastAPI:
         anthropic_key: Optional[str] = Form(None)
     ):
         """Handle setup form submission."""
-        global _settings
+        global _settings, _temp_bot_app
         
         # Save the bot token
         _settings.telegram_bot_token = bot_token
@@ -252,15 +330,34 @@ def create_app(settings: Settings) -> FastAPI:
         if anthropic_key:
             _settings.anthropic_api_key = anthropic_key
         
-        # Generate deep link with session secret
-        # Extract bot username from token (we'll need user to provide or fetch from API)
-        deep_link = f"https://t.me/start?startgroup={_session_secret}"
-        
-        # For now, we'll use a simpler flow where user sends /start manually
-        # The QR just opens Telegram
-        qr_data = generate_qr_svg(f"https://t.me/share/url?url=Send%20/start%20to%20your%20bot")
-        
-        return {"qr_url": qr_data, "session_secret": _session_secret}
+        try:
+            # 1. Initialize temporary bot
+            builder = Application.builder().token(bot_token)
+            app = builder.build()
+            
+            # 2. Verify token and get username
+            bot_user = await app.bot.get_me()
+            username = bot_user.username
+            
+            # 3. Generate Deep Link
+            # Format: https://t.me/<username>?start=<secret>
+            deep_link = f"https://t.me/{username}?start={_session_secret}"
+            qr_data = generate_qr_svg(deep_link)
+            
+            # 4. Start Listening for /start <secret>
+            app.add_handler(CommandHandler("start", _handle_pairing_start))
+            
+            await app.initialize()
+            await app.start()
+            await app.updater.start_polling(drop_pending_updates=True)
+            
+            _temp_bot_app = app
+            
+            return {"qr_url": qr_data, "session_secret": _session_secret}
+            
+        except Exception as e:
+            logger.error(f"Setup failed: {e}")
+            return {"error": f"Failed to connect to Telegram: {str(e)}"}
     
     @app.get("/status")
     async def status():
@@ -294,9 +391,23 @@ async def run_pairing_server(settings: Settings) -> None:
     # Run server in background
     server_task = asyncio.create_task(server.serve())
     
-    # Wait for pairing to complete
-    await _pairing_complete.wait()
-    
-    # Shutdown server
-    server.should_exit = True
-    await server_task
+    try:
+        # Wait for pairing to complete
+        await _pairing_complete.wait()
+        
+        # Give a moment for the success response to return
+        await asyncio.sleep(1)
+        
+    finally:
+        # Shutdown temporary bot
+        global _temp_bot_app
+        if _temp_bot_app:
+            if _temp_bot_app.updater.running:
+                await _temp_bot_app.updater.stop()
+            if _temp_bot_app.running:
+                await _temp_bot_app.stop()
+            await _temp_bot_app.shutdown()
+            
+        # Shutdown web server
+        server.should_exit = True
+        await server_task
