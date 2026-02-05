@@ -1,14 +1,14 @@
 """Mission Control API endpoints.
 
 Created: 2026-02-05
-Updated: 2026-02-05 - Added task execution endpoints (run/stop)
+Updated: 2026-02-05 - Added task documents, attachments endpoints
 FastAPI router for Mission Control operations.
 
 Provides REST endpoints for:
 - Agents: CRUD operations, heartbeat
 - Tasks: CRUD, status updates, assignment, execution (run/stop)
 - Messages: Post comments with @mentions
-- Documents: CRUD for deliverables
+- Documents: CRUD for deliverables, task attachments
 - Activity: Feed and stats
 - Notifications: List and mark read/delivered
 - Execution: Run tasks with agents, stop running tasks
@@ -17,6 +17,8 @@ Task Execution Endpoints:
 - POST /tasks/{id}/run - Start task execution (streams via WebSocket)
 - POST /tasks/{id}/stop - Stop running execution
 - GET /tasks/running - List currently running tasks
+- GET /tasks/{id}/documents - Get documents linked to a task
+- POST /tasks/{id}/attachments - Attach a document to a task
 
 Mount this router to your FastAPI app:
     from pocketclaw.mission_control.api import router as mission_control_router
@@ -382,6 +384,32 @@ async def get_task_messages(task_id: str, limit: int = 100) -> dict[str, Any]:
     }
 
 
+@router.get("/tasks/{task_id}/documents")
+async def get_task_documents(task_id: str, limit: int = 100) -> dict[str, Any]:
+    """Get documents linked to a task (deliverables, attachments).
+
+    Args:
+        task_id: ID of the task
+        limit: Maximum documents to return
+
+    Returns:
+        List of documents linked to this task
+    """
+    manager = get_mission_control_manager()
+
+    # Verify task exists
+    task = await manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    documents = await manager.list_documents(task_id=task_id)
+
+    return {
+        "documents": [d.to_dict() for d in documents[:limit]],
+        "count": len(documents),
+    }
+
+
 @router.post("/tasks/{task_id}/messages")
 async def post_message(task_id: str, request: PostMessageRequest) -> dict[str, Any]:
     """Post a message to a task thread."""
@@ -400,6 +428,47 @@ async def post_message(task_id: str, request: PostMessageRequest) -> dict[str, A
     )
 
     return {"message": message.to_dict()}
+
+
+class AttachDocumentRequest(BaseModel):
+    """Request to attach a document to a task."""
+
+    document_id: str = Field(..., description="ID of the document to attach")
+
+
+@router.post("/tasks/{task_id}/attachments")
+async def attach_document(task_id: str, request: AttachDocumentRequest) -> dict[str, Any]:
+    """Attach an existing document to a task.
+
+    This links the document to the task, making it appear in the task's documents list.
+
+    Args:
+        task_id: ID of the task
+        request: Contains document_id to attach
+
+    Returns:
+        The updated document
+    """
+    manager = get_mission_control_manager()
+
+    # Verify task exists
+    task = await manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Verify document exists
+    document = await manager.get_document(request.document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Link document to task
+    document.task_id = task_id
+    await manager._store.save_document(document)
+
+    return {
+        "document": document.to_dict(),
+        "message": f"Document '{document.title}' attached to task '{task.title}'",
+    }
 
 
 # ============================================================================

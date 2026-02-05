@@ -1,7 +1,7 @@
 """Mission Control Task Executor.
 
 Created: 2026-02-05
-Updated: 2026-02-05 - Added security hardening (rate limits, input validation, error sanitization)
+Updated: 2026-02-05 - Added task output persistence (auto-save deliverables on completion)
 
 Enables execution of AI agents on tasks with real-time streaming via WebSocket.
 
@@ -11,6 +11,7 @@ Key features:
 - Streams execution to activity feed
 - Updates task/agent status automatically
 - Broadcasts events via MessageBus → WebSocket
+- Auto-saves task output as deliverable document on completion
 
 Security features:
 - Max concurrent task limit (default: 5)
@@ -285,6 +286,17 @@ class MCTaskExecutor:
                     task_id=task_id,
                     message=f"{agent.name} completed '{task.title}'",
                 )
+
+                # Save task output as a deliverable document
+                if output_chunks:
+                    full_output = "".join(output_chunks)
+                    await self._save_task_deliverable(
+                        task_id=task_id,
+                        agent_id=agent_id,
+                        output=full_output,
+                        task_title=task.title,
+                    )
+
             elif final_status == "error":
                 await self._log_activity(
                     ActivityType.TASK_UPDATED,
@@ -525,6 +537,55 @@ class MCTaskExecutor:
         )
 
         return activity
+
+    async def _save_task_deliverable(
+        self,
+        task_id: str,
+        agent_id: str,
+        output: str,
+        task_title: str,
+    ) -> None:
+        """Save agent output as a deliverable document.
+
+        Creates a Document of type DELIVERABLE linked to the task.
+        This persists the agent's work for later review.
+
+        Args:
+            task_id: ID of the completed task
+            agent_id: ID of the agent that completed the task
+            output: Full text output from the agent
+            task_title: Title of the task (for document title)
+        """
+        from pocketclaw.mission_control.models import Document, DocumentType
+
+        if not output or not output.strip():
+            return
+
+        manager = get_mission_control_manager()
+
+        # Create deliverable document
+        document = Document(
+            title=f"Deliverable: {task_title}",
+            content=output,
+            type=DocumentType.DELIVERABLE,
+            author_id=agent_id,
+            task_id=task_id,
+            tags=["auto-generated", "task-output"],
+        )
+
+        await manager._store.save_document(document)
+
+        logger.info(
+            f"Saved task deliverable: doc_id={document.id}, task_id={task_id}, length={len(output)}"
+        )
+
+        # Log activity
+        await self._log_activity(
+            ActivityType.DOCUMENT_CREATED,
+            agent_id=agent_id,
+            task_id=task_id,
+            message=f"Deliverable saved for '{task_title}'",
+        )
 
 
 # Singleton pattern
