@@ -1,6 +1,14 @@
 <!--
   PocketPaw Dashboard - Base Template
 
+  Changes (2026-02-05):
+  - MAJOR REFACTOR: Componentized JS using mixin pattern
+  - Added feature module scripts: chat, file-browser, reminders, intentions,
+    skills, transparency, remote-access, mission-control
+  - Scripts load order: websocket.js -> tools.js -> features/*.js -> app.js
+  - Added "Crew" tab (multi-agent control room) with live indicator badge
+  - Added missions.html component include
+
   Changes (2026-02-03):
   - Created as part of frontend modularization
   - Split from monolithic index.html (~1124 lines) into composable templates
@@ -100,6 +108,17 @@
             >
                 Terminal
             </button>
+            <button
+                class="px-4 md:px-6 py-1.5 rounded-[7px] text-[13px] font-medium transition-all flex items-center gap-1.5"
+                :class="view === 'missions' ? 'bg-[#636366]/80 text-white shadow-sm' : 'text-[var(--text-secondary)] hover:text-white'"
+                @click="view = 'missions'; loadMCData()"
+            >
+                <span class="relative flex h-2 w-2" x-show="missionControl.stats.active_tasks > 0">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                </span>
+                Crew
+            </button>
             </div>
         </div>
 
@@ -139,6 +158,7 @@
       {% include "components/chat.html" %}
       {% include "components/activity.html" %}
       {% include "components/terminal.html" %}
+      {% include "components/missions.html" %}
     </main>
 
     {% include "components/modals.html" %}
@@ -149,6 +169,16 @@
     <!-- Scripts -->
     <script src="/static/js/websocket.js"></script>
     <script src="/static/js/tools.js"></script>
+    <!-- Feature modules (loaded before app.js) -->
+    <script src="/static/js/features/chat.js"></script>
+    <script src="/static/js/features/file-browser.js"></script>
+    <script src="/static/js/features/reminders.js"></script>
+    <script src="/static/js/features/intentions.js"></script>
+    <script src="/static/js/features/skills.js"></script>
+    <script src="/static/js/features/transparency.js"></script>
+    <script src="/static/js/features/remote-access.js"></script>
+    <script src="/static/js/features/mission-control.js"></script>
+    <!-- Main app (assembles features) -->
     <script src="/static/js/app.js"></script>
 
     <!-- Initialize Lucide icons -->

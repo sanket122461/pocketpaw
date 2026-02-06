@@ -1,0 +1,101 @@
+<!--
+  PocketPaw - Crew Stats Bar Component
+
+  Created: 2026-02-05
+  Extracted from missions.html as part of template componentization.
+
+  Features:
+  - Live indicator
+  - Agent/task/completion stats
+  - New Task/Agent buttons
+  - Running Task Banner with click-to-expand
+-->
+
+<!-- Compact Stats Bar -->
+<div class="flex items-center justify-between px-6 py-3 border-b border-white/5 bg-black/20">
+    <div class="flex items-center gap-6">
+        <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            <span class="text-xs text-white/40 uppercase tracking-wider">Live</span>
+        </div>
+        <div class="flex items-center gap-4 text-sm">
+            <span class="text-white/70"><span class="text-white font-semibold" x-text="missionControl.stats.total_agents || 0"></span> agents</span>
+            <span class="text-white/30">·</span>
+            <span class="text-white/70"><span class="text-white font-semibold" x-text="missionControl.stats.active_tasks || 0"></span> active</span>
+            <span class="text-white/30">·</span>
+            <span class="text-white/70"><span class="text-white font-semibold" x-text="missionControl.stats.completed_today || 0"></span> done today</span>
+        </div>
+    </div>
+    <div class="flex items-center gap-2">
+        <button
+            class="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all"
+            @click="missionControl.showCreateTask = true"
+        >
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>New Task</span>
+        </button>
+        <button
+            class="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all"
+            @click="missionControl.showCreateAgent = true"
+        >
+            <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+            <span>New Agent</span>
+        </button>
+    </div>
+</div>
+
+<!-- Running Task Banner -->
+<template x-if="getRunningTaskCount() > 0">
+    <div
+        class="relative overflow-hidden cursor-pointer transition-all hover:brightness-110"
+        @click="openAgentActivitySheet(getFirstRunningTask()?.taskId)"
+    >
+        <!-- Gradient Background -->
+        <div class="absolute inset-0 bg-gradient-to-r from-green-600/90 via-emerald-500/80 to-teal-500/90"></div>
+        <!-- Animated shimmer -->
+        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer"></div>
+
+        <div class="relative flex items-center justify-between px-6 py-3">
+            <div class="flex items-center gap-4">
+                <!-- Agent Avatar -->
+                <div class="relative">
+                    <div class="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-lg shadow-lg ring-2 ring-white/30">
+                        <span x-text="getFirstRunningTask()?.agentName?.charAt(0) || 'A'"></span>
+                    </div>
+                    <!-- Pulsing indicator -->
+                    <div class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-lg">
+                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    </div>
+                </div>
+
+                <!-- Agent & Task Info -->
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-2">
+                        <span class="text-white font-semibold" x-text="getFirstRunningTask()?.agentName"></span>
+                        <span class="text-white/70 text-sm">is working...</span>
+                    </div>
+                    <span class="text-white/80 text-sm truncate max-w-md" x-text="getFirstRunningTask()?.taskTitle"></span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <!-- Running count badge -->
+                <template x-if="getRunningTaskCount() > 1">
+                    <span class="px-2.5 py-1 text-xs font-medium bg-white/20 text-white rounded-full backdrop-blur">
+                        +<span x-text="getRunningTaskCount() - 1"></span> more
+                    </span>
+                </template>
+
+                <!-- Elapsed time -->
+                <div class="text-white/70 text-sm">
+                    <span x-text="formatElapsedTime(getFirstRunningTask()?.startedAt)"></span>
+                </div>
+
+                <!-- Expand arrow -->
+                <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-white"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
