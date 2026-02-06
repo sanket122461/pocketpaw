@@ -105,71 +105,69 @@ Paw:  "3 agents working on it. Agent A is scraping competitor sites,
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        YOU (Telegram / Web)                      │
-└──────────────────────┬───────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                      Channel Adapters                            │
-│              Telegram Bot  ·  WebSocket Dashboard                │
-└──────────────────────┬───────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                       Message Bus                                │
-│           Async event queue · Inbound / Outbound routing         │
-└────────┬─────────────────────────────────────┬───────────────────┘
-         │                                     │
-         ▼                                     ▼
-┌─────────────────────────┐    ┌───────────────────────────────────┐
-│      Agent Loop          │    │        Mission Control            │
-│                          │    │                                   │
-│  Context Builder         │    │  Multi-agent orchestration        │
-│  (Identity + Soul +      │    │  Task assignment & lifecycle      │
-│   Style + Memory)        │    │  Heartbeat daemon (15 min)        │
-│         │                │    │  Live execution streaming         │
-│         ▼                │    │  Document management              │
-│    Agent Router          │    │  Agent status tracking            │
-│    ┌──────────┐          │    │                                   │
-│    │Claude SDK│ (recommended)│ │  Status: INBOX → ASSIGNED →      │
-│    ├──────────┤          │    │  IN_PROGRESS → REVIEW → DONE     │
-│    │Open Interp│         │    │                                   │
-│    ├──────────┤          │    └───────────────────────────────────┘
-│    │ Native   │          │
-│    └──────────┘          │
-└────────┬─────────────────┘
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                        Tool Registry                             │
-│  Shell · Filesystem · Browser · Desktop · Memory · HTTP Fetch    │
-└────────┬──────────────────────────────┬──────────────────────────┘
-         │                              │
-         ▼                              ▼
-┌──────────────────────┐    ┌──────────────────────────────────────┐
-│    LLM Router         │    │          Security Layer              │
-│                       │    │                                      │
-│  Anthropic (Claude)   │    │  Guardian AI — blocks dangerous cmds │
-│  OpenAI (GPT)         │    │  Audit Log  — tracks every action   │
-│  Ollama (local)       │    │  File Jail  — sandboxed directories │
-│                       │    │  Panic Button — instant kill switch │
-│  Auto-detection +     │    │                                      │
-│  fallback chain       │    └──────────────────────────────────────┘
-└───────────────────────┘
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                       Memory System                              │
-│                                                                  │
-│  File Store (default)        Mem0 Store (optional)               │
-│  ~/.pocketclaw/memory/       Semantic vector search              │
-│  Markdown-based              Automatic fact extraction           │
-│  Human-readable              LLM-powered recall                  │
-│                                                                  │
-│  API: remember() · recall() · search() · get_context()          │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    %% Node Definitions
+    User(["👤 YOU <br/>(Telegram / Web)"])
+    
+    subgraph Channels ["Channel Adapters"]
+        Adapters["Telegram Bot  •  WebSocket Dashboard"]
+    end
+
+    subgraph Messaging ["Internal Transport"]
+        Bus["<b>Message Bus</b><br/>Async Event Queue • Inbound/Outbound Routing"]
+    end
+
+    subgraph Core ["Core Intelligence"]
+        direction TB
+        subgraph AgentLoop ["Agent Loop"]
+            Context["<b>Context Builder</b><br/>Identity + Soul + Style + Memory"]
+            Router["<b>Agent Router</b>"]
+            SDKs["Claude SDK (Recommended)<br/>Open Interpreter<br/>Native"]
+            Context --> Router --> SDKs
+        end
+
+        subgraph MissionControl ["Mission Control"]
+            Orch["Multi-agent Orchestration<br/>Task Assignment & Lifecycle<br/>Heartbeat Daemon (15 min)"]
+            Stream["Live Execution Streaming<br/>Document Management<br/>Agent Status Tracking"]
+            Status["Status: INBOX ➔ ASSIGNED ➔<br/>IN_PROGRESS ➔ REVIEW ➔ DONE"]
+        end
+    end
+
+    subgraph Tools ["Tool Registry"]
+        Registry["Shell • Filesystem • Browser • Desktop • Memory • HTTP Fetch"]
+    end
+
+    subgraph Support ["Security & Routing"]
+        LLM["<b>LLM Router</b><br/>Anthropic • OpenAI • Ollama<br/>Auto-detection + Fallback"]
+        Security["<b>Security Layer (Guardian AI)</b><br/>Command Blocking • Audit Logs<br/>File Jail (Sandbox) • Panic Button"]
+    end
+
+    subgraph Memory ["Memory System"]
+        FileStore["<b>File Store</b> (Default)<br/>Markdown-based<br/>Human-readable"]
+        Mem0["<b>Mem0 Store</b> (Optional)<br/>Semantic Vector Search<br/>Fact Extraction"]
+        API["API: remember() • recall() • search() • get_context()"]
+    end
+
+    %% Connections
+    User --> Adapters
+    Adapters --> Bus
+    Bus --> AgentLoop
+    Bus --> MissionControl
+    AgentLoop --> Registry
+    Registry --> LLM
+    Registry --> Security
+    LLM --> Memory
+    Security -.-> Registry
+
+    %% Styling
+    classDef default font-family:arial,font-size:14px;
+    classDef highlight fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef coreBox fill:#f5f7ff,stroke:#4a90e2,stroke-width:2px;
+    classDef securityBox fill:#fff5f5,stroke:#e53e3e,stroke-width:1px;
+    
+    class AgentLoop,MissionControl coreBox;
+    class Security securityBox;
 ```
 
 ---
