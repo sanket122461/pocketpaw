@@ -2,7 +2,8 @@
  * PocketPaw - Mission Control Feature Module
  *
  * Created: 2026-02-05
- * Updated: 2026-02-12 — Enhanced Deep Work task table with:
+ * Updated: 2026-02-12 — Added createProjectTask() for adding tasks to a project.
+ *   Enhanced Deep Work task table with:
  *   - Execution levels (phase grouping by dependency order)
  *   - Expandable task rows with inline deliverable preview
  *   - Skip task functionality
@@ -67,11 +68,15 @@ window.PocketPaw.MissionControl = {
                 showStartProject: false,       // Start project modal
                 showProjectDetail: false,      // Full project detail sheet
                 projectInput: '',              // Natural language project input
-                researchDepth: 'standard',     // 'quick' | 'standard' | 'deep'
+                researchDepth: 'standard',     // 'none' | 'quick' | 'standard' | 'deep'
                 projectStarting: false,        // Loading state while planner runs
                 planningPhase: '',             // Current phase: research, prd, tasks, team
                 planningMessage: '',           // Phase progress message
                 planningProjectId: null,       // Project being planned
+
+                // Add task to project
+                showCreateProjectTask: false,  // Show add-task modal for current project
+                projectTaskForm: { title: '', description: '', priority: 'medium', assignee: '', tags: '' },
 
                 // Enhanced task table state
                 executionLevels: [],           // list of lists of task IDs from API
@@ -287,6 +292,72 @@ window.PocketPaw.MissionControl = {
                 } catch (e) {
                     console.error('Failed to create task:', e);
                     this.showToast('Failed to create task', 'error');
+                }
+            },
+
+            /**
+             * Create a task within the currently selected project.
+             * Posts to the same /api/mission-control/tasks endpoint with project_id.
+             * Refreshes the project plan view after creation.
+             */
+            async createProjectTask() {
+                const form = this.missionControl.projectTaskForm;
+                if (!form.title || !this.missionControl.selectedProject) return;
+
+                const projectId = this.missionControl.selectedProject.id;
+
+                try {
+                    const tags = form.tags
+                        ? form.tags.split(',').map(s => s.trim()).filter(s => s)
+                        : [];
+
+                    const body = {
+                        title: form.title,
+                        description: form.description,
+                        priority: form.priority,
+                        tags: tags,
+                        project_id: projectId
+                    };
+
+                    if (form.assignee) {
+                        body.assignee_ids = [form.assignee];
+                    }
+
+                    const res = await fetch('/api/mission-control/tasks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        const task = data.task || data;
+
+                        // Add to project tasks list
+                        this.missionControl.projectTasks.push(task);
+
+                        // Reset form and close modal
+                        this.missionControl.showCreateProjectTask = false;
+                        this.missionControl.projectTaskForm = {
+                            title: '', description: '', priority: 'medium',
+                            assignee: '', tags: ''
+                        };
+
+                        this.showToast('Task added to project!', 'success');
+
+                        // Refresh the full project plan to get updated progress + levels
+                        await this.selectProject(this.missionControl.selectedProject);
+
+                        this.$nextTick(() => {
+                            if (window.refreshIcons) window.refreshIcons();
+                        });
+                    } else {
+                        const err = await res.json();
+                        this.showToast(err.detail || 'Failed to add task', 'error');
+                    }
+                } catch (e) {
+                    console.error('Failed to create project task:', e);
+                    this.showToast('Failed to add task', 'error');
                 }
             },
 

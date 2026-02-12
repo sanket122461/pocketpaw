@@ -1,8 +1,9 @@
 """Mission Control API endpoints.
 
 Created: 2026-02-05
-Updated: 2026-02-12 — Enriched project list/get responses with folder_path
-  and file_count for sidebar project browser.
+Updated: 2026-02-12 — POST /tasks now accepts optional project_id to associate
+  a new task with a Deep Work project. Enriched project list/get responses with
+  folder_path and file_count for sidebar project browser.
   Previous: Added Deep Work project endpoints:
   - POST /projects — create project
   - GET /projects — list projects (optional status filter)
@@ -93,6 +94,9 @@ class CreateTaskRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     assignee_ids: list[str] = Field(default_factory=list)
     creator_id: str | None = None
+    project_id: str | None = Field(
+        default=None, description="Associate task with a Deep Work project"
+    )
 
 
 class UpdateTaskRequest(BaseModel):
@@ -285,7 +289,7 @@ async def list_tasks(
 
 @router.post("/tasks")
 async def create_task(request: CreateTaskRequest) -> dict[str, Any]:
-    """Create a new task."""
+    """Create a new task, optionally associated with a Deep Work project."""
     manager = get_mission_control_manager()
 
     task = await manager.create_task(
@@ -296,6 +300,16 @@ async def create_task(request: CreateTaskRequest) -> dict[str, Any]:
         tags=request.tags,
         assignee_ids=request.assignee_ids if request.assignee_ids else None,
     )
+
+    # Associate with project if project_id is provided
+    if request.project_id:
+        task.project_id = request.project_id
+        await manager._store.save_task(task)
+        # Add to project's task_ids list
+        project = await manager.get_project(request.project_id)
+        if project and task.id not in project.task_ids:
+            project.task_ids.append(task.id)
+            await manager.update_project(project)
 
     return {"task": task.to_dict()}
 
