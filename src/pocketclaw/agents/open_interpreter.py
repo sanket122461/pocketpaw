@@ -184,9 +184,7 @@ class OpenInterpreterAgent:
                                     elif is_end:
                                         # Emit tool_result event for Activity panel
                                         lang_display = (
-                                            current_language.title()
-                                            if current_language
-                                            else "Code"
+                                            current_language.title() if current_language else "Code"
                                         )
                                         asyncio.run_coroutine_threadsafe(
                                             chunk_queue.put(
@@ -230,9 +228,7 @@ class OpenInterpreterAgent:
                                 elif chunk_type == "message" and content:
                                     # Stream message chunks
                                     asyncio.run_coroutine_threadsafe(
-                                        chunk_queue.put(
-                                            {"type": "message", "content": content}
-                                        ),
+                                        chunk_queue.put({"type": "message", "content": content}),
                                         loop,
                                     )
                         elif isinstance(chunk, str) and chunk:
@@ -248,9 +244,7 @@ class OpenInterpreterAgent:
                         )
                 except Exception as e:
                     asyncio.run_coroutine_threadsafe(
-                        chunk_queue.put(
-                            {"type": "error", "content": f"Agent error: {str(e)}"}
-                        ),
+                        chunk_queue.put({"type": "error", "content": f"Agent error: {str(e)}"}),
                         loop,
                     )
                 finally:

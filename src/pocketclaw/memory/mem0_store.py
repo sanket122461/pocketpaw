@@ -551,7 +551,9 @@ class Mem0MemoryStore:
         # Parse timestamps
         created_str = metadata.get("created_at")
         try:
-            created_at = datetime.fromisoformat(created_str) if created_str else datetime.now(tz=UTC)
+            created_at = (
+                datetime.fromisoformat(created_str) if created_str else datetime.now(tz=UTC)
+            )
             if created_at.tzinfo is None:
                 created_at = created_at.replace(tzinfo=UTC)
         except (ValueError, TypeError):

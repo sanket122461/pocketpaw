@@ -85,9 +85,15 @@ def _bootstrap_deps() -> None:
             try:
                 subprocess.check_call(
                     [
-                        sys.executable, "-m", "pip", "install",
-                        "--user", "-q", "--break-system-packages",
-                    ] + missing,
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "--user",
+                        "-q",
+                        "--break-system-packages",
+                    ]
+                    + missing,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                 )
@@ -763,9 +769,7 @@ class PackageInstaller:
 
         return False
 
-    def _install_with_uv_tool(
-        self, pkg: str, extras: list[str], upgrade: bool
-    ) -> bool:
+    def _install_with_uv_tool(self, pkg: str, extras: list[str], upgrade: bool) -> bool:
         """Install using `uv tool install` — isolated venv in ~/.local/share/uv/tools/."""
         cmd = ["uv", "tool", "install"]
         if upgrade:

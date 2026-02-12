@@ -142,9 +142,7 @@ class TestMCPToolExecution:
 
         mock_session = AsyncMock()
         block = SimpleNamespace(text="file contents here")
-        mock_session.call_tool = AsyncMock(
-            return_value=SimpleNamespace(content=[block])
-        )
+        mock_session.call_tool = AsyncMock(return_value=SimpleNamespace(content=[block]))
         state = _ServerState(
             config=MCPServerConfig(name="fs"),
             connected=True,

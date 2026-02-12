@@ -28,6 +28,7 @@ def _ensure_utc(dt: datetime) -> datetime:
         return dt.replace(tzinfo=UTC)
     return dt
 
+
 logger = logging.getLogger(__name__)
 
 

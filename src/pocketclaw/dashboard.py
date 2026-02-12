@@ -7,6 +7,11 @@ Changes:
   - 2026-02-06: Channel config REST API (GET /api/channels/status, POST save/toggle).
   - 2026-02-06: Refactored adapter storage to _channel_adapters dict; auto-start all configured.
   - 2026-02-06: Auto-start Discord/WhatsApp adapters alongside dashboard; WhatsApp webhook routes.
+  - 2026-02-12: Call ensure_project_directories() on startup for migration.
+  - 2026-02-12: handle_file_browse() accepts optional `context` param echoed in response for
+    sidebar vs modal file routing.
+  - 2026-02-12: Fixed handle_file_browse bug: filter hidden files BEFORE applying 50-item limit.
+  - 2026-02-12: Added Deep Work API router at /api/deep-work/*.
   - 2026-02-05: Added Mission Control API router at /api/mission-control/*.
   - 2026-02-04: Added Telegram setup API endpoints (/api/telegram/status, /api/telegram/setup, /api/telegram/pairing-status).
   - 2026-02-03: Cleaned up duplicate imports, fixed duplicate save() calls.
@@ -42,6 +47,7 @@ from pocketclaw.bus import get_message_bus
 from pocketclaw.bus.adapters.websocket_adapter import WebSocketAdapter
 from pocketclaw.config import Settings, get_access_token, get_config_path, regenerate_token
 from pocketclaw.daemon import get_daemon
+from pocketclaw.deep_work.api import router as deep_work_router
 from pocketclaw.memory import MemoryType, get_memory_manager
 from pocketclaw.mission_control.api import router as mission_control_router
 from pocketclaw.scheduler import get_scheduler
@@ -121,6 +127,10 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 # Mount Mission Control API router
 app.include_router(mission_control_router, prefix="/api/mission-control")
+
+# Mount Deep Work API router
+
+app.include_router(deep_work_router, prefix="/api/deep-work")
 
 
 async def broadcast_reminder(reminder: dict):
@@ -369,6 +379,25 @@ async def startup_event():
                 logger.info("Webhook adapter auto-started (%d slots)", count)
         except Exception as e:
             logger.warning("Failed to auto-start webhook adapter: %s", e)
+
+    # Ensure project directories exist for all Deep Work projects
+    try:
+        from pocketclaw.mission_control.manager import get_mission_control_manager
+
+        mc_manager = get_mission_control_manager()
+        await mc_manager.ensure_project_directories()
+    except Exception as e:
+        logger.warning("Failed to ensure project directories: %s", e)
+
+    # Recover Deep Work projects interrupted by previous shutdown
+    try:
+        from pocketclaw.deep_work import recover_interrupted_projects
+
+        recovered = await recover_interrupted_projects()
+        if recovered:
+            logger.info("Recovered %d interrupted Deep Work project(s)", recovered)
+    except Exception as e:
+        logger.warning("Failed to recover interrupted projects: %s", e)
 
     # Auto-start enabled MCP servers
     try:
@@ -2356,7 +2385,8 @@ async def websocket_endpoint(
             # Handle file browser
             elif action == "browse":
                 path = data.get("path", "~")
-                await handle_file_browse(websocket, path, settings)
+                context = data.get("context")
+                await handle_file_browse(websocket, path, settings, context=context)
 
             # Handle reminder actions
             elif action == "get_reminders":
@@ -2927,9 +2957,21 @@ async def handle_file_navigation(websocket: WebSocket, path: str, settings: Sett
     await websocket.send_json({"type": "message", "content": result})
 
 
-async def handle_file_browse(websocket: WebSocket, path: str, settings: Settings):
-    """Handle file browser - returns structured JSON for the modal."""
+async def handle_file_browse(
+    websocket: WebSocket, path: str, settings: Settings, *, context: str | None = None
+):
+    """Handle file browser - returns structured JSON for the modal.
+
+    If an optional ``context`` string is provided it is echoed back in the
+    response so the frontend can route sidebar vs modal file responses.
+    """
     from pocketclaw.tools.fetch import is_safe_path
+
+    def _resp(payload: dict) -> dict:
+        """Attach context to every response so frontend can route sidebar vs modal."""
+        if context:
+            payload["context"] = context
+        return payload
 
     # Resolve ~ to home directory
     if path == "~" or path == "":
@@ -2947,27 +2989,26 @@ async def handle_file_browse(websocket: WebSocket, path: str, settings: Settings
     # Security check
     if not is_safe_path(resolved_path, jail):
         await websocket.send_json(
-            {"type": "files", "error": "Access denied: path outside allowed directory"}
+            _resp({"type": "files", "error": "Access denied: path outside allowed directory"})
         )
         return
 
     if not resolved_path.exists():
-        await websocket.send_json({"type": "files", "error": "Path does not exist"})
+        await websocket.send_json(_resp({"type": "files", "error": "Path does not exist"}))
         return
 
     if not resolved_path.is_dir():
-        await websocket.send_json({"type": "files", "error": "Not a directory"})
+        await websocket.send_json(_resp({"type": "files", "error": "Not a directory"}))
         return
 
     # Build file list
     files = []
     try:
-        items = sorted(
-            (i for i in resolved_path.iterdir() if not i.name.startswith(".")),
-            key=lambda x: (not x.is_dir(), x.name.lower()),
-        )
+        items = sorted(resolved_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+        # Filter hidden files BEFORE applying the limit so dotfiles don't consume quota
+        visible_items = [item for item in items if not item.name.startswith(".")]
 
-        for item in items[:50]:  # Limit to 50 visible items
+        for item in visible_items[:50]:  # Limit to 50 visible items
             file_info = {"name": item.name, "isDir": item.is_dir()}
 
             if not item.is_dir():
@@ -2985,7 +3026,7 @@ async def handle_file_browse(websocket: WebSocket, path: str, settings: Settings
             files.append(file_info)
 
     except PermissionError:
-        await websocket.send_json({"type": "files", "error": "Permission denied"})
+        await websocket.send_json(_resp({"type": "files", "error": "Permission denied"}))
         return
 
     # Calculate relative path from home for display
@@ -2995,7 +3036,7 @@ async def handle_file_browse(websocket: WebSocket, path: str, settings: Settings
     except ValueError:
         display_path = str(resolved_path)
 
-    await websocket.send_json({"type": "files", "path": display_path, "files": files})
+    await websocket.send_json(_resp({"type": "files", "path": display_path, "files": files}))
 
 
 # =========================================================================

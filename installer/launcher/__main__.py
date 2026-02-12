@@ -172,7 +172,7 @@ def main() -> int:
 
         if VENV_DIR.exists():
             logger.info("Resetting: removing venv at %s", VENV_DIR)
-            
+
             # Windows-safe delete: handle file locks and permission errors
             def handle_remove_error(func, path, exc_info):
                 """Error handler for shutil.rmtree to handle Windows file locks."""
@@ -182,7 +182,7 @@ def main() -> int:
                     func(path)
                 except Exception as e:
                     logger.debug("Retry failed for %s: %s", path, e)
-            
+
             # Try to delete with retries
             max_attempts = 3
             for attempt in range(max_attempts):
@@ -193,11 +193,11 @@ def main() -> int:
                         break
                 except Exception as e:
                     logger.warning("Attempt %d/%d failed: %s", attempt + 1, max_attempts, e)
-                
+
                 if attempt < max_attempts - 1:
                     logger.info("Retrying in 2 seconds...")
                     time.sleep(2)
-            
+
             # If venv still exists, rename it and create a new one
             if VENV_DIR.exists():
                 backup_dir = VENV_DIR.parent / f"{VENV_DIR.name}.old.{int(time.time())}"
