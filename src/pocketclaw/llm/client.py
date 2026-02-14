@@ -24,8 +24,7 @@ class LLMClient:
     provider: str  # "anthropic" | "ollama" | "openai"
     model: str  # resolved model name
     api_key: str | None  # API key (None for Ollama)
-    base_url: str | None  # Only set for Ollama
-    ollama_host: str  # always from settings
+    ollama_host: str  # Ollama server URL (always populated from settings)
 
     # -- convenience properties --
 
@@ -78,7 +77,6 @@ class LLMClient:
         if self.is_ollama:
             return {
                 "ANTHROPIC_BASE_URL": self.ollama_host,
-                "ANTHROPIC_AUTH_TOKEN": "ollama",
                 "ANTHROPIC_API_KEY": "ollama",
             }
         # Anthropic / OpenAI — pass API key if available
@@ -151,7 +149,6 @@ def resolve_llm_client(
             provider="ollama",
             model=settings.ollama_model,
             api_key=None,
-            base_url=settings.ollama_host,
             ollama_host=settings.ollama_host,
         )
 
@@ -160,7 +157,6 @@ def resolve_llm_client(
             provider="openai",
             model=settings.openai_model,
             api_key=settings.openai_api_key,
-            base_url=None,
             ollama_host=settings.ollama_host,
         )
 
@@ -169,6 +165,5 @@ def resolve_llm_client(
         provider="anthropic",
         model=settings.anthropic_model,
         api_key=settings.anthropic_api_key,
-        base_url=None,
         ollama_host=settings.ollama_host,
     )

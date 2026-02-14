@@ -21,7 +21,7 @@ class TestResolveLLMClient:
         assert llm.provider == "anthropic"
         assert llm.model == settings.anthropic_model
         assert llm.api_key == "sk-ant"
-        assert llm.base_url is None
+        assert llm.ollama_host  # always populated from settings
 
     def test_resolve_auto_openai(self):
         """auto + openai key only → openai provider."""
@@ -48,7 +48,7 @@ class TestResolveLLMClient:
         assert llm.provider == "ollama"
         assert llm.model == "qwen2.5:7b"
         assert llm.api_key is None
-        assert llm.base_url == "http://myhost:11434"
+        assert llm.ollama_host == "http://myhost:11434"
 
     def test_resolve_explicit_ollama(self):
         """Explicit provider='ollama'."""
@@ -97,7 +97,6 @@ class TestCreateAnthropicClient:
             provider="ollama",
             model="llama3.2",
             api_key=None,
-            base_url="http://localhost:11434",
             ollama_host="http://localhost:11434",
         )
         llm.create_anthropic_client()
@@ -116,7 +115,6 @@ class TestCreateAnthropicClient:
             provider="anthropic",
             model="claude-sonnet-4-5-20250929",
             api_key="sk-ant",
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         llm.create_anthropic_client()
@@ -134,7 +132,6 @@ class TestCreateAnthropicClient:
             provider="anthropic",
             model="claude-sonnet-4-5-20250929",
             api_key="sk-ant",
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         llm.create_anthropic_client(timeout=30.0, max_retries=5)
@@ -151,7 +148,6 @@ class TestCreateAnthropicClient:
             provider="openai",
             model="gpt-4o",
             api_key="sk-oai",
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         with pytest.raises(ValueError, match="OpenAI provider"):
@@ -169,13 +165,11 @@ class TestToSdkEnv:
             provider="ollama",
             model="llama3.2",
             api_key=None,
-            base_url="http://myhost:11434",
             ollama_host="http://myhost:11434",
         )
         env = llm.to_sdk_env()
         assert env == {
             "ANTHROPIC_BASE_URL": "http://myhost:11434",
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_API_KEY": "ollama",
         }
 
@@ -184,7 +178,6 @@ class TestToSdkEnv:
             provider="anthropic",
             model="claude-sonnet-4-5-20250929",
             api_key="sk-real",
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         env = llm.to_sdk_env()
@@ -195,7 +188,6 @@ class TestToSdkEnv:
             provider="anthropic",
             model="claude-sonnet-4-5-20250929",
             api_key=None,
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         env = llm.to_sdk_env()
@@ -213,7 +205,6 @@ class TestFormatApiError:
             provider="ollama",
             model="missing-model",
             api_key=None,
-            base_url="http://localhost:11434",
             ollama_host="http://localhost:11434",
         )
         msg = llm.format_api_error(Exception("model not_found"))
@@ -225,7 +216,6 @@ class TestFormatApiError:
             provider="ollama",
             model="llama3.2",
             api_key=None,
-            base_url="http://localhost:11434",
             ollama_host="http://localhost:11434",
         )
         msg = llm.format_api_error(Exception("Connection refused"))
@@ -237,7 +227,6 @@ class TestFormatApiError:
             provider="ollama",
             model="llama3.2",
             api_key=None,
-            base_url="http://localhost:11434",
             ollama_host="http://localhost:11434",
         )
         msg = llm.format_api_error(Exception("some weird error"))
@@ -248,7 +237,6 @@ class TestFormatApiError:
             provider="anthropic",
             model="claude-sonnet-4-5-20250929",
             api_key="bad-key",
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         msg = llm.format_api_error(Exception("Invalid API key"))
@@ -259,7 +247,6 @@ class TestFormatApiError:
             provider="anthropic",
             model="claude-sonnet-4-5-20250929",
             api_key="sk-test",
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         msg = llm.format_api_error(Exception("rate limit exceeded"))
@@ -277,7 +264,6 @@ class TestFrozen:
             provider="anthropic",
             model="claude-sonnet-4-5-20250929",
             api_key="sk-test",
-            base_url=None,
             ollama_host="http://localhost:11434",
         )
         with pytest.raises(dataclasses.FrozenInstanceError):

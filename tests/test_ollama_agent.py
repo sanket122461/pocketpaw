@@ -237,8 +237,8 @@ class TestClaudeSDKOllamaLogic:
         env = llm.to_sdk_env()
 
         assert env["ANTHROPIC_BASE_URL"] == "http://myhost:11434"
-        assert env["ANTHROPIC_AUTH_TOKEN"] == "ollama"
         assert env["ANTHROPIC_API_KEY"] == "ollama"
+        assert "ANTHROPIC_AUTH_TOKEN" not in env
         assert llm.model == "llama3.2"
 
     def test_anthropic_env_vars_construction(self):

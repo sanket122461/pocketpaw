@@ -255,42 +255,44 @@ async def check_ollama(settings: Settings) -> int:
     Returns 0 on success, 1 on failure.
     """
     import httpx
+    from rich.console import Console
 
     from pocketclaw.llm.client import resolve_llm_client
 
+    console = Console()
     llm = resolve_llm_client(settings, force_provider="ollama")
     ollama_host = llm.ollama_host
     ollama_model = llm.model
     failures = 0
 
     # 1. Check server connectivity
-    print(f"\n  Checking Ollama at {ollama_host} ...")
+    console.print(f"\n  Checking Ollama at [bold]{ollama_host}[/] ...")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(f"{ollama_host}/api/tags")
             resp.raise_for_status()
             tags_data = resp.json()
         models = [m.get("name", "") for m in tags_data.get("models", [])]
-        print(f"  [OK]  Server reachable — {len(models)} model(s) available")
+        console.print(f"  [green]\\[OK][/]  Server reachable — {len(models)} model(s) available")
     except Exception as e:
-        print(f"  [FAIL] Cannot reach Ollama server: {e}")
-        print("         Make sure Ollama is running: ollama serve")
+        console.print(f"  [red]\\[FAIL][/] Cannot reach Ollama server: {e}")
+        console.print("         Make sure Ollama is running: [bold]ollama serve[/]")
         return 1
 
     # 2. Check configured model is available
     # Ollama model names may or may not include ":latest" tag
     model_found = any(m == ollama_model or m.startswith(f"{ollama_model}:") for m in models)
     if model_found:
-        print(f"  [OK]  Model '{ollama_model}' is available")
+        console.print(f"  [green]\\[OK][/]  Model '{ollama_model}' is available")
     else:
-        print(f"  [WARN] Model '{ollama_model}' not found locally")
+        console.print(f"  [yellow]\\[WARN][/] Model '{ollama_model}' not found locally")
         if models:
-            print(f"         Available: {', '.join(models[:10])}")
-        print(f"         Pull it with: ollama pull {ollama_model}")
+            console.print(f"         Available: {', '.join(models[:10])}")
+        console.print(f"         Pull it with: [bold]ollama pull {ollama_model}[/]")
         failures += 1
 
     # 3. Test Anthropic-compatible endpoint (basic completion)
-    print("  Testing Anthropic Messages API compatibility ...")
+    console.print("  Testing Anthropic Messages API compatibility ...")
     try:
         ac = llm.create_anthropic_client(timeout=60.0, max_retries=1)
         response = await ac.messages.create(
@@ -299,17 +301,17 @@ async def check_ollama(settings: Settings) -> int:
             messages=[{"role": "user", "content": "Say hi"}],
         )
         text = response.content[0].text if response.content else ""
-        print(f"  [OK]  Messages API works — response: {text[:60]}")
+        console.print(f"  [green]\\[OK][/]  Messages API works — response: {text[:60]}")
     except Exception as e:
-        print(f"  [FAIL] Messages API failed: {e}")
-        print("         Ollama v0.14.0+ is required for Anthropic API compatibility")
+        console.print(f"  [red]\\[FAIL][/] Messages API failed: {e}")
+        console.print("         Ollama v0.14.0+ is required for Anthropic API compatibility")
         failures += 1
         # Skip tool test if basic API fails
-        print(f"\n  Result: {2 - (1 if model_found else 0)}/3 checks passed")
+        console.print(f"\n  Result: {2 - (1 if model_found else 0)}/3 checks passed")
         return 1
 
     # 4. Test tool calling
-    print("  Testing tool calling support ...")
+    console.print("  Testing tool calling support ...")
     try:
         tool_response = await ac.messages.create(
             model=ollama_model,
@@ -334,21 +336,24 @@ async def check_ollama(settings: Settings) -> int:
         )
         has_tool_use = any(b.type == "tool_use" for b in tool_response.content)
         if has_tool_use:
-            print("  [OK]  Tool calling works")
+            console.print("  [green]\\[OK][/]  Tool calling works")
         else:
-            print("  [WARN] Model responded but did not use the tool")
-            print("         Tool calling quality varies by model. Try a larger model.")
+            console.print("  [yellow]\\[WARN][/] Model responded but did not use the tool")
+            console.print("         Tool calling quality varies by model. Try a larger model.")
             failures += 1
     except Exception as e:
-        print(f"  [WARN] Tool calling test failed: {e}")
-        print("         Some models may not support tool calling reliably.")
+        console.print(f"  [yellow]\\[WARN][/] Tool calling test failed: {e}")
+        console.print("         Some models may not support tool calling reliably.")
         failures += 1
 
     passed = 4 - failures
-    print(f"\n  Result: {passed}/4 checks passed")
+    console.print(f"\n  Result: [bold]{passed}/4[/] checks passed")
     if failures == 0:
-        print("  Ollama is ready to use with PocketPaw!")
-        print("  Set llm_provider=ollama in settings or POCKETCLAW_LLM_PROVIDER=ollama\n")
+        console.print("  [green]Ollama is ready to use with PocketPaw![/]")
+        console.print(
+            "  Set [bold]llm_provider=ollama[/] in settings"
+            " or [bold]POCKETCLAW_LLM_PROVIDER=ollama[/]\n"
+        )
     return 1 if failures > 1 else 0
 
 
