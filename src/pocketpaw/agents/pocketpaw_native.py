@@ -325,12 +325,16 @@ class PocketPawOrchestrator:
             logger.error("❌ OpenAI-compatible base URL not configured")
             return
 
+        if self._llm.is_gemini and not self._llm.api_key:
+            logger.error("❌ Google API key not configured for Gemini")
+            return
+
         if self._llm.is_anthropic and not self._llm.api_key:
             logger.error("❌ No LLM provider available for PocketPaw Native")
             return
 
         try:
-            if self._llm.is_openai_compatible:
+            if self._llm.is_openai_compatible or self._llm.is_gemini:
                 self._client = self._llm.create_openai_client()
             else:
                 self._client = self._llm.create_anthropic_client()
@@ -350,6 +354,8 @@ class PocketPawOrchestrator:
 
         if self._llm.is_ollama:
             brain = f"Ollama ({self._llm.ollama_host})"
+        elif self._llm.is_gemini:
+            brain = f"Gemini ({self._llm.model})"
         elif self._llm.is_openai_compatible:
             brain = f"OpenAI-compatible ({self._llm.openai_compatible_base_url})"
         else:
@@ -507,9 +513,10 @@ class PocketPawOrchestrator:
 
         kwargs: dict = {
             "model": model,
-            "max_tokens": 4096,
             "messages": oai_messages,
         }
+        if self.settings.openai_compatible_max_tokens > 0:
+            kwargs["max_tokens"] = self.settings.openai_compatible_max_tokens
         if oai_tools:
             kwargs["tools"] = oai_tools
 
@@ -545,7 +552,15 @@ class PocketPawOrchestrator:
         else:
             stop_reason = finish or "end_turn"
 
-        return SimpleNamespace(content=content_blocks, stop_reason=stop_reason)
+        usage = None
+        if hasattr(response, "usage") and response.usage:
+            usage = {
+                "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "output_tokens": getattr(response.usage, "completion_tokens", 0),
+                "total_tokens": getattr(response.usage, "total_tokens", 0),
+            }
+
+        return SimpleNamespace(content=content_blocks, stop_reason=stop_reason, usage=usage)
 
     # =========================================================================
     # SECURITY METHODS
@@ -878,6 +893,7 @@ class PocketPawOrchestrator:
                     self.settings.smart_routing_enabled
                     and not self._llm.is_ollama
                     and not self._llm.is_openai_compatible
+                    and not self._llm.is_gemini
                 ):
                     from pocketpaw.agents.model_router import ModelRouter
 
@@ -899,9 +915,11 @@ class PocketPawOrchestrator:
                 filtered_tools = self._get_filtered_tools()
                 # OpenAI-compatible endpoints (especially thinking models)
                 # may need longer for first response.
-                api_timeout = 180.0 if self._llm.is_openai_compatible else 90.0
+                api_timeout = (
+                    180.0 if self._llm.is_openai_compatible or self._llm.is_gemini else 90.0
+                )
                 try:
-                    if self._llm.is_openai_compatible:
+                    if self._llm.is_openai_compatible or self._llm.is_gemini:
                         response = await asyncio.wait_for(
                             self._call_openai_compatible(
                                 model=model,
@@ -935,6 +953,22 @@ class PocketPawOrchestrator:
                         content=self._llm.format_api_error(api_error),
                     )
                     return
+
+                # Emit token usage if available
+                usage = getattr(response, "usage", None)
+                if usage:
+                    if isinstance(usage, dict):
+                        usage_data = usage
+                    else:
+                        usage_data = {
+                            "input_tokens": getattr(usage, "input_tokens", 0),
+                            "output_tokens": getattr(usage, "output_tokens", 0),
+                            "total_tokens": (
+                                getattr(usage, "input_tokens", 0)
+                                + getattr(usage, "output_tokens", 0)
+                            ),
+                        }
+                    yield AgentEvent(type="token_usage", content="", metadata=usage_data)
 
                 # Process response content blocks
                 assistant_content = []
@@ -1004,7 +1038,7 @@ class PocketPawOrchestrator:
     ) -> AsyncIterator[dict]:
         """Run method for compatibility with router."""
         async for event in self.chat(message, system_prompt=system_prompt, history=history):
-            yield {"type": event.type, "content": event.content}
+            yield {"type": event.type, "content": event.content, "metadata": event.metadata}
 
     async def stop(self) -> None:
         """Stop the orchestrator."""

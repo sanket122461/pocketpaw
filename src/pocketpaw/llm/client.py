@@ -21,7 +21,7 @@ class LLMClient:
     Created via ``resolve_llm_client()`` — not intended for direct construction.
     """
 
-    provider: str  # "anthropic" | "ollama" | "openai" | "openai_compatible"
+    provider: str  # "anthropic" | "ollama" | "openai" | "openai_compatible" | "gemini"
     model: str  # resolved model name
     api_key: str | None  # API key (None for Ollama)
     ollama_host: str  # Ollama server URL (always populated from settings)
@@ -40,6 +40,10 @@ class LLMClient:
     @property
     def is_openai_compatible(self) -> bool:
         return self.provider == "openai_compatible"
+
+    @property
+    def is_gemini(self) -> bool:
+        return self.provider == "gemini"
 
     # -- factory methods --
 
@@ -86,7 +90,7 @@ class LLMClient:
                 max_retries=max_retries if max_retries is not None else 1,
             )
 
-        if self.is_openai_compatible:
+        if self.is_openai_compatible or self.is_gemini:
             return AsyncAnthropic(
                 base_url=self.openai_compatible_base_url,
                 api_key=self.api_key or "not-needed",
@@ -108,7 +112,7 @@ class LLMClient:
                 "ANTHROPIC_BASE_URL": self.ollama_host,
                 "ANTHROPIC_API_KEY": "ollama",
             }
-        if self.is_openai_compatible:
+        if self.is_openai_compatible or self.is_gemini:
             env: dict[str, str] = {
                 "ANTHROPIC_BASE_URL": self.openai_compatible_base_url,
             }
@@ -149,6 +153,25 @@ class LLMClient:
             return (
                 f"❌ Ollama error: {error_str}\n\n"
                 f"Check that Ollama is running and accessible at `{self.ollama_host}`."
+            )
+
+        if self.is_gemini:
+            if "api key" in full_context or "auth" in full_context or "401" in full_context:
+                return (
+                    "❌ Google API key is invalid or missing.\n\n"
+                    "Get a key at [AI Studio](https://aistudio.google.com/apikey), "
+                    "then add it in **Settings → API Keys → Google API Key**."
+                )
+            if "not found" in full_context or "not exist" in full_context:
+                return (
+                    f"❌ Model '{self.model}' is not available via Gemini.\n\n"
+                    "Check the model name in **Settings → General → Gemini Model**."
+                )
+            if stderr.strip():
+                return f"❌ Gemini API error:\n\n{stderr.strip()}"
+            return (
+                f"❌ Gemini API error: {error_str}\n\n"
+                "Check your Google API key and model in Settings."
             )
 
         if self.is_openai_compatible:
@@ -249,6 +272,15 @@ def resolve_llm_client(
             api_key=settings.openai_compatible_api_key,
             ollama_host=settings.ollama_host,
             openai_compatible_base_url=settings.openai_compatible_base_url,
+        )
+
+    if provider == "gemini":
+        return LLMClient(
+            provider="gemini",
+            model=settings.gemini_model,
+            api_key=settings.google_api_key,
+            ollama_host=settings.ollama_host,
+            openai_compatible_base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         )
 
     # Default: anthropic

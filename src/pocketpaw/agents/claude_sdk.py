@@ -649,12 +649,35 @@ class ClaudeAgentSDK:
 
             llm = resolve_llm_client(self.settings)
 
+            # Gemini & plain OpenAI are not compatible with Claude SDK —
+            # the SDK speaks Anthropic Messages API, but Gemini/OpenAI
+            # endpoints speak the OpenAI Chat Completions API format.
+            if llm.is_gemini:
+                yield {
+                    "type": "error",
+                    "content": (
+                        "❌ Gemini is not compatible with the **Claude Agent SDK** "
+                        "backend.\n\n"
+                        "The Claude SDK uses the Anthropic Messages API format, "
+                        "but Gemini's endpoint speaks OpenAI format.\n\n"
+                        "**Fix:** Switch to **PocketPaw Native** backend in "
+                        "**Settings → General → Agent Backend**. "
+                        "PocketPaw Native fully supports Gemini."
+                    ),
+                }
+                return
+
             # Smart model routing — classify BEFORE prompt composition so we
             # can skip tool instructions for SIMPLE messages and dispatch to
             # the fast-path (direct API) for simple queries.
             is_simple = False
             selection = None
-            if self.settings.smart_routing_enabled and not llm.is_ollama:
+            if (
+                self.settings.smart_routing_enabled
+                and not llm.is_ollama
+                and not llm.is_openai_compatible
+                and not llm.is_gemini
+            ):
                 from pocketpaw.agents.model_router import ModelRouter, TaskComplexity
 
                 model_router = ModelRouter(self.settings)
@@ -748,7 +771,7 @@ class ClaudeAgentSDK:
                     sdk_env = {"ANTHROPIC_API_KEY": env_key}
             if sdk_env:
                 options_kwargs["env"] = sdk_env
-            if llm.is_ollama or llm.is_openai_compatible:
+            if llm.is_ollama or llm.is_openai_compatible or llm.is_gemini:
                 options_kwargs["model"] = llm.model
 
             # Wire in MCP servers (policy-filtered)
@@ -773,6 +796,7 @@ class ClaudeAgentSDK:
                 self.settings.smart_routing_enabled
                 and not llm.is_ollama
                 and not llm.is_openai_compatible
+                and not llm.is_gemini
             ):
                 from pocketpaw.agents.model_router import ModelRouter
 
