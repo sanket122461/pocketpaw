@@ -256,12 +256,23 @@
             </button>
 
             <!-- Take Your Paw With You button -->
-            <button
+            <!-- <button
                 class="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
                 @click="openRemote()"
             >
                 <i data-lucide="smartphone" class="w-4 h-4 text-accent"></i>
                 <span class="text-sm font-medium text-white/90 hidden md:inline">Take Your Paw With You</span>
+            </button> -->
+            <button class="w-full sm:w-auto flex items-center justify-center gap-2 
+                          bg-white/5 hover:bg-white/10 border border-white/10 
+                          px-3 py-2 rounded-full transition-all 
+                          hover:scale-105 active:scale-95"
+                    @click="openRemote()"
+                >
+                    <i data-lucide="smartphone" class="w-4 h-4 text-accent shrink-0"></i>
+                    <span class="text-sm font-medium text-white/90 hidden sm:inline">
+                        Take Your Paw With You
+                    </span>
             </button>
         </div>
       </header>
