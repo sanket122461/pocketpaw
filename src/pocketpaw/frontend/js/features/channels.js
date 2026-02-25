@@ -374,9 +374,9 @@ window.PocketPaw.Channels = {
             },
 
             /**
-             * User cancelled the install prompt
+             * User cancelled the install prompt (channels-specific)
              */
-            cancelInstall() {
+            cancelInstallPrompt() {
                 this.installPrompt = null;
                 this.installLoading = false;
             },
