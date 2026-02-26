@@ -22,7 +22,8 @@ window.PocketPaw.Reminders = {
             showReminders: false,
             reminders: [],
             reminderInput: '',
-            reminderLoading: false
+            reminderLoading: false,
+            _reminderTimerInterval: null
         };
     },
 
@@ -89,7 +90,9 @@ window.PocketPaw.Reminders = {
                     Notification.requestPermission();
                 }
 
+                // Start the countdown timer
                 this.$nextTick(() => {
+                    this.startReminderTimer();
                     if (window.refreshIcons) window.refreshIcons();
                 });
             },
@@ -124,6 +127,71 @@ window.PocketPaw.Reminders = {
                     hour: '2-digit',
                     minute: '2-digit'
                 });
+            },
+
+            /**
+             * Calculate time remaining for a reminder based on trigger_at timestamp
+             */
+            calculateTimeRemaining(triggerAt) {
+                const now = new Date();
+                const trigger = new Date(triggerAt);
+                const delta = trigger - now;
+
+                if (delta < 0) {
+                    return 'past';
+                }
+
+                const totalSeconds = Math.floor(delta / 1000);
+
+                if (totalSeconds < 60) {
+                    return `in ${totalSeconds}s`;
+                } else if (totalSeconds < 3600) {
+                    const minutes = Math.floor(totalSeconds / 60);
+                    return `in ${minutes}m`;
+                } else if (totalSeconds < 86400) {
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    return `in ${hours}h ${minutes}m`;
+                } else {
+                    const days = Math.floor(totalSeconds / 86400);
+                    const hours = Math.floor((totalSeconds % 86400) / 3600);
+                    return `in ${days}d ${hours}h`;
+                }
+            },
+
+            /**
+             * Update time_remaining for all active reminders
+             */
+            updateAllReminderTimers() {
+                this.reminders.forEach(reminder => {
+                    reminder.time_remaining = this.calculateTimeRemaining(reminder.trigger_at);
+                });
+            },
+
+            /**
+             * Start the reminder countdown timer
+             */
+            startReminderTimer() {
+                // Clear any existing timer
+                this.stopReminderTimer();
+
+                // Update immediately so there's no delay
+                this.updateAllReminderTimers();
+
+                // Update every second
+                this._reminderTimerInterval = setInterval(() => {
+                    this.updateAllReminderTimers();
+                }, 1000);
+            },
+
+            /**
+             * Stop the reminder countdown timer
+             */
+            stopReminderTimer() {
+                if (this._reminderTimerInterval) {
+                    clearInterval(this._reminderTimerInterval);
+                    this._reminderTimerInterval = null;
+                }
             }
         };
     }
