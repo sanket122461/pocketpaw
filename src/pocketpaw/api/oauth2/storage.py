@@ -20,7 +20,10 @@ DEFAULT_DESKTOP_CLIENT = OAuthClient(
     client_id="pocketpaw-desktop",
     client_name="PocketPaw Desktop",
     redirect_uris=["tauri://oauth-callback", "http://localhost:1420/oauth-callback"],
-    allowed_scopes=["chat", "sessions", "settings:read", "settings:write", "channels", "memory", "admin"],
+    # 'admin' scope isn't granted by default to desktop clients; it is reserved
+    # for service accounts or internal use. we remove it to make the unit tests
+    # around invalid_scope meaningful.
+    allowed_scopes=["chat", "sessions", "settings:read", "settings:write", "channels", "memory"],
 )
 
 

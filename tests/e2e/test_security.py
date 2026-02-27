@@ -1,6 +1,12 @@
 # E2E Tests for Security Features
 # Created: 2026-02-06
 #
+# These tests require the pytest-playwright plugin and a browser install.
+# In CI or on machines without Playwright the entire module should be skipped.
+
+import pytest
+pytest.importorskip("playwright.sync_api")
+
 # Tests WebSocket authentication changes:
 # - Auth via first message (new preferred method)
 # - Legacy query-param auth still works

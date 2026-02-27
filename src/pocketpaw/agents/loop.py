@@ -276,6 +276,11 @@ class AgentLoop:
             )
             try:
                 async for event in run_iter:
+                    # Defensive check: skip if event is not AgentEvent
+                    if not hasattr(event, 'type') or not hasattr(event, 'content'):
+                        logger.warning("Invalid event object from backend: %s", type(event))
+                        continue
+                    
                     etype = event.type
                     econtent = event.content
                     meta = event.metadata or {}

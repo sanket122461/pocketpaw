@@ -324,7 +324,10 @@ class TestBrowserDriverScreenshot:
         path = await driver.screenshot("/tmp/test.png")
 
         driver._page.screenshot.assert_called_once()
-        assert path == "/tmp/test.png"
+        # driver.screenshot normalizes to an absolute path; normalize expected
+        import os
+        expected = os.path.abspath("/tmp/test.png")
+        assert path == expected
 
     @pytest.mark.asyncio
     async def test_screenshot_default_path(self):

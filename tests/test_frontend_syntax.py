@@ -67,7 +67,8 @@ class TestJavaScriptStructure:
     def test_app_defines_app_function(self):
         """Test that app.js defines the app() function for Alpine.js."""
         app_js = FRONTEND_DIR / "js" / "app.js"
-        content = app_js.read_text()
+        # always read as UTF-8; Windows default encoding can raise a UnicodeDecodeError
+        content = app_js.read_text(encoding="utf-8")
 
         assert "function app()" in content, "app.js should define app() function"
 

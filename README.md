@@ -92,6 +92,25 @@ cd pocketpaw && uv run pocketpaw
 
 </details>
 
+---
+
+## Development setup
+
+To run the full test suite or work on the codebase you’ll need the
+development extras. From a clone of the repo:
+
+```bash
+uv sync --dev           # installs pytest, ruff, mypy, pytest-playwright, etc.
+playwright install       # download browser binaries for e2e tests
+```
+
+Unit tests now include Windows compatibility patches (file mode bits,
+path normalization, UTF‑8 file reads), but they still pass more cleanly
+under Linux/WSL. The `tests/e2e` directory exercises a real browser; the
+modules are skipped automatically if `pytest-playwright` is not
+installed.
+
+
 <details>
 <summary>Docker</summary>
 

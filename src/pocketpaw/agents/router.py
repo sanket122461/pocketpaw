@@ -65,6 +65,14 @@ class AgentRouter:
         async for event in self._backend.run(
             message, system_prompt=system_prompt, history=history, session_key=session_key
         ):
+            # Defensive check: convert dict to AgentEvent if needed
+            if isinstance(event, dict):
+                logger.warning("Backend yielded dict instead of AgentEvent, converting...")
+                event = AgentEvent(
+                    type=event.get("type", "message"),
+                    content=event.get("content", ""),
+                    metadata=event.get("metadata")
+                )
             yield event
 
     async def stop(self) -> None:

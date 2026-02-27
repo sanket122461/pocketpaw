@@ -132,11 +132,15 @@ class TestAPIKeyManager:
         assert manager.verify(plaintext) is None
 
     def test_file_permissions(self, manager):
-        import os
+        import os, sys
 
         manager.create("perm-test")
         mode = oct(os.stat(manager._path).st_mode & 0o777)
-        assert mode == "0o600"
+        # Windows doesn't enforce Unix-style permissions, so allow 0o666 there
+        if sys.platform.startswith("win"):
+            assert mode in ("0o600", "0o666")
+        else:
+            assert mode == "0o600"
 
 
 # ===================== API endpoint tests =====================
